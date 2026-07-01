@@ -21,7 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.info.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Quando disparado via workflow_dispatch, faz checkout da tag
           # indicada no input em vez de main HEAD.
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: actions/setup-python@v5
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: actions/setup-python@v5
@@ -172,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - name: Instalar dependências do sistema
@@ -223,7 +223,7 @@ jobs:
     needs: [build, appimage, deb, deb-install-smoke, flatpak]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
       - uses: actions/download-artifact@v4
