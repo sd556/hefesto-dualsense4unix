@@ -13,6 +13,7 @@ from hefesto_dualsense4unix.daemon.udp_server import (
     UdpHandler,
     UdpServer,
 )
+from hefesto_dualsense4unix.core.trigger_effects import TriggerMode
 from hefesto_dualsense4unix.testing import FakeController
 
 # ---------------------------------------------------------------------------
@@ -91,6 +92,41 @@ def test_trigger_update_aplica_trigger():
     triggers = [c for c in fc.commands if c.kind == "set_trigger"]
     assert len(triggers) == 1
     assert triggers[0].payload[0] == "right"
+
+
+def test_trigger_update_custom_mode_accepts_raw_mode_and_forces():
+    handler, fc, _ = _mk_handler()
+    payload = {
+        "version": 1,
+        "instructions": [
+            {"type": "TriggerUpdate", "parameters": ["right", "Custom", 37, 1, 2, 3, 4, 5, 6, 7]}
+        ],
+    }
+    handler.handle_datagram(_datagram(payload), ("127.0.0.1", 12345))
+    triggers = [c for c in fc.commands if c.kind == "set_trigger"]
+    assert len(triggers) == 1
+    _, effect = triggers[0].payload
+    assert effect.mode == 37
+    assert effect.forces == (1, 2, 3, 4, 5, 6, 7)
+
+
+def test_trigger_update_custom_mode_accepts_dsx_hybrid_aliases():
+    handler, fc, _ = _mk_handler()
+    payload = {
+        "version": 1,
+        "instructions": [
+            {
+                "type": "TriggerUpdate",
+                "parameters": ["left", "Custom", "VibrateResistance", 23, 198, 5, 0, 0, 0, 0],
+            }
+        ],
+    }
+    handler.handle_datagram(_datagram(payload), ("127.0.0.1", 12345))
+    triggers = [c for c in fc.commands if c.kind == "set_trigger"]
+    assert len(triggers) == 1
+    _, effect = triggers[0].payload
+    assert effect.mode == TriggerMode.PULSE
+    assert effect.forces == (23, 198, 5, 0, 0, 0, 0)
 
 
 def test_rgb_update_aplica_led():

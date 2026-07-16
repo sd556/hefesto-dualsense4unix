@@ -204,8 +204,7 @@ class UdpHandler:
             raise ValueError(f"TriggerUpdate side invalido: {side_raw}")
         if not isinstance(mode_raw, str):
             raise ValueError("TriggerUpdate mode precisa ser string")
-        rest_ints = [int(v) for v in rest]
-        effect = build_from_name(mode_raw, rest_ints)
+        effect = build_from_name(mode_raw, rest)
         self.controller.set_trigger(side, effect)  # type: ignore[arg-type]
 
     def _do_rgb_update(self, params: list[Any]) -> None:

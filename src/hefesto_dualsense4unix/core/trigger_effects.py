@@ -18,6 +18,7 @@ que o caller faça o import (mantém o backend trocável — ADR-001).
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import Any
 
 from hefesto_dualsense4unix.core.controller import TriggerEffect
 
@@ -40,6 +41,30 @@ class TriggerMode(IntEnum):
 
 
 ZERO7 = (0, 0, 0, 0, 0, 0, 0)
+
+
+DSX_CUSTOM_MODE_TO_TRIGGER_MODE: dict[str, int] = {
+    "OFF": TriggerMode.OFF,
+    "Rigid": TriggerMode.RIGID,
+    "RigidA": TriggerMode.RIGID_A,
+    "RigidB": TriggerMode.RIGID_B,
+    "RigidAB": TriggerMode.RIGID_AB,
+    "Pulse": TriggerMode.PULSE,
+    "PulseA": TriggerMode.PULSE_A,
+    "PulseB": TriggerMode.PULSE_B,
+    "PulseAB": TriggerMode.PULSE_AB,
+    # DSX custom hybrid modes ride on the pulse family; the 7 raw force bytes
+    # decide whether the firmware behaves like pulse, vibrate-pulse, or
+    # vibrate-resistance. Keeping the raw bytes intact preserves DSX semantics.
+    "VibrateResistance": TriggerMode.PULSE,
+    "VibrateResistanceA": TriggerMode.PULSE_A,
+    "VibrateResistanceB": TriggerMode.PULSE_B,
+    "VibrateResistanceAB": TriggerMode.PULSE_AB,
+    "VibratePulse": TriggerMode.PULSE,
+    "VibratePulseA": TriggerMode.PULSE_A,
+    "VibratePulseB": TriggerMode.PULSE_B,
+    "VibratePulseAB": TriggerMode.PULSE_AB,
+}
 
 
 def _byte(value: int, *, name: str, lo: int = 0, hi: int = 255) -> int:
@@ -260,14 +285,40 @@ def multi_position_vibration(frequency: int, strengths: list[int]) -> TriggerEff
     )
 
 
-def custom(mode: int, forces: tuple[int, ...]) -> TriggerEffect:
-    """Escape hatch: envia mode + forces cru. Útil para experimentação."""
-    if len(forces) != 7:
-        raise ValueError(f"custom: forces precisa 7 elementos, recebeu {len(forces)}")
+def _normalize_dsx_custom_mode(mode: str | int) -> int:
+    if isinstance(mode, int):
+        return _byte(mode, name="mode")
+    key = str(mode).replace(" ", "")
+    try:
+        return int(DSX_CUSTOM_MODE_TO_TRIGGER_MODE[key])
+    except KeyError as exc:
+        raise ValueError(f"custom: modo DSX desconhecido: {mode}") from exc
+
+
+def custom(mode: str | int, *forces: Any) -> TriggerEffect:
+    """Escape hatch: envia mode + forces cru.
+
+    Aceita:
+    - `custom(34, 0, 9, 7, 7, 10, 0, 0)`
+    - `custom("VibrateResistance", 23, 198, 5, 0, 0, 0, 0)`
+    - `custom("PulseB", (10, 255, 0, 0, 0, 0, 0))`
+    """
+    if len(forces) == 1 and isinstance(forces[0], (tuple, list)):
+        raw_forces = tuple(int(v) for v in forces[0])
+    else:
+        raw_forces = tuple(int(v) for v in forces)
+    if len(raw_forces) != 7:
+        raise ValueError(f"custom: forces precisa 7 elementos, recebeu {len(raw_forces)}")
     fixed: tuple[int, int, int, int, int, int, int] = (
-        forces[0], forces[1], forces[2], forces[3], forces[4], forces[5], forces[6]
+        _byte(raw_forces[0], name="forces[0]"),
+        _byte(raw_forces[1], name="forces[1]"),
+        _byte(raw_forces[2], name="forces[2]"),
+        _byte(raw_forces[3], name="forces[3]"),
+        _byte(raw_forces[4], name="forces[4]"),
+        _byte(raw_forces[5], name="forces[5]"),
+        _byte(raw_forces[6], name="forces[6]"),
     )
-    return TriggerEffect(mode=mode, forces=fixed)
+    return TriggerEffect(mode=_normalize_dsx_custom_mode(mode), forces=fixed)
 
 
 # ---------------------------------------------------------------------------
@@ -378,12 +429,23 @@ PRESET_FACTORIES = {
     "MultiPositionFeedback": multi_position_feedback,
     "MultiPositionVibration": multi_position_vibration,
     "Custom": custom,
+    # DSX custom hybrid modes — RacingDSX sends these with 7 raw force bytes.
+    # The `custom` factory already handles the mode name → TriggerMode mapping
+    # via DSX_CUSTOM_MODE_TO_TRIGGER_MODE and passes the 7 forces through.
+    "VibrateResistance": custom,
+    "VibrateResistanceA": custom,
+    "VibrateResistanceB": custom,
+    "VibrateResistanceAB": custom,
+    "VibratePulse": custom,
+    "VibratePulseA": custom,
+    "VibratePulseB": custom,
+    "VibratePulseAB": custom,
 }
 
 
 def build_from_name(
     name: str,
-    params: list[int] | list[list[int]] | dict[str, int],
+    params: list[Any] | list[list[int]] | dict[str, Any],
 ) -> TriggerEffect:
     """Resolve preset por nome + params. Aceita posicional (list), nomeado (dict) ou aninhado.
 
@@ -429,6 +491,7 @@ def build_from_name(
 
 __all__ = [
     "AMPLITUDE_SCALE",
+    "DSX_CUSTOM_MODE_TO_TRIGGER_MODE",
     "PRESET_FACTORIES",
     "TriggerMode",
     "auto_gun",
