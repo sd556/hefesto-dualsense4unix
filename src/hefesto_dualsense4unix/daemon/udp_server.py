@@ -176,6 +176,7 @@ class UdpHandler:
         try:
             if kind == "TriggerUpdate":
                 self._do_trigger_update(params)
+                logger.info("udp_trigger_applied", side=str(params[0]) if params else "?", mode=str(params[1]) if len(params) > 1 else "?", rest=str(params[2:]) if len(params) > 2 else "")
             elif kind == "RGBUpdate":
                 self._do_rgb_update(params)
             elif kind == "PlayerLED":

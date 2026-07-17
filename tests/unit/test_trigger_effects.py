@@ -69,6 +69,11 @@ class TestResistance:
         assert eff.mode == TriggerMode.RIGID_AB
         assert eff.forces == (3, 5 * AMPLITUDE_SCALE, 0, 0, 0, 0, 0)
 
+    def test_preserva_byte_cru_do_racingdsx(self):
+        """RacingDSX usa stiffness 0-255 no slot force durante o fallback híbrido."""
+        assert tfx.resistance(0, 175).forces == (0, 175, 0, 0, 0, 0, 0)
+        assert tfx.resistance(0, 229).forces == (0, 229, 0, 0, 0, 0, 0)
+
 
 class TestBow:
     def test_canonico(self):
@@ -213,8 +218,8 @@ class TestCustomEBuild:
             build_from_name("Inexistente", [])
 
 
-def test_registry_tem_19_presets():
-    assert len(PRESET_FACTORIES) == 19
+def test_registry_tem_28_presets_including_dsx_aliases():
+    assert len(PRESET_FACTORIES) == 28
 
 
 def test_todos_os_presets_chave_retornam_callable():

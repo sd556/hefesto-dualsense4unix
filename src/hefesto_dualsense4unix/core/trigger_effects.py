@@ -18,7 +18,7 @@ que o caller faça o import (mantém o backend trocável — ADR-001).
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Any
+from typing import Any, cast
 
 from hefesto_dualsense4unix.core.controller import TriggerEffect
 
@@ -41,6 +41,29 @@ class TriggerMode(IntEnum):
 
 
 ZERO7 = (0, 0, 0, 0, 0, 0, 0)
+
+
+DSX_CUSTOM_MODE_VALUE_TO_TRIGGER_MODE: dict[int, int] = {
+    # Numeric values from DSX's CustomTriggerValueMode enum. These are protocol
+    # enum IDs, not raw DualSense HID effect modes.
+    0: TriggerMode.OFF,
+    1: TriggerMode.RIGID,
+    2: TriggerMode.RIGID_A,
+    3: TriggerMode.RIGID_B,
+    4: TriggerMode.RIGID_AB,
+    5: TriggerMode.PULSE,
+    6: TriggerMode.PULSE_A,
+    7: TriggerMode.PULSE_B,
+    8: TriggerMode.PULSE_AB,
+    9: TriggerMode.PULSE,
+    10: TriggerMode.PULSE_A,
+    11: TriggerMode.PULSE_B,
+    12: TriggerMode.PULSE_AB,
+    13: TriggerMode.PULSE,
+    14: TriggerMode.PULSE_A,
+    15: TriggerMode.PULSE_B,
+    16: TriggerMode.PULSE_AB,
+}
 
 
 DSX_CUSTOM_MODE_TO_TRIGGER_MODE: dict[str, int] = {
@@ -80,6 +103,19 @@ def _amp(value: int, *, name: str) -> int:
     """
     _byte(value, name=name, lo=0, hi=8)
     return min(255, value * AMPLITUDE_SCALE)
+
+
+def _resistance_force(value: int) -> int:
+    """Converte força DSX nomeada ou preserva stiffness cru do RacingDSX.
+
+    O protocolo DSX documenta Resistance em 0-8, mas o fallback híbrido do
+    RacingDSX envia seu stiffness 0-255 no mesmo slot. Valores acima de 8 são,
+    portanto, bytes HID já normalizados e não devem ser achatados para 255.
+    """
+    _byte(value, name="force")
+    if value <= 8:
+        return _amp(value, name="force")
+    return value
 
 
 def _pos(value: int, *, name: str) -> int:
@@ -132,10 +168,10 @@ def pulse_b(start: int, end: int, force: int) -> TriggerEffect:
 
 
 def resistance(start: int, force: int) -> TriggerEffect:
-    """Resistência contínua a partir de `start` com força 0-8."""
+    """Resistência DSX 0-8 ou stiffness cru 0-255 do RacingDSX."""
     return TriggerEffect(
         mode=TriggerMode.RIGID_AB,
-        forces=(_pos(start, name="start"), _amp(force, name="force"), 0, 0, 0, 0, 0),
+        forces=(_pos(start, name="start"), _resistance_force(force), 0, 0, 0, 0, 0),
     )
 
 
@@ -287,7 +323,8 @@ def multi_position_vibration(frequency: int, strengths: list[int]) -> TriggerEff
 
 def _normalize_dsx_custom_mode(mode: str | int) -> int:
     if isinstance(mode, int):
-        return _byte(mode, name="mode")
+        raw_mode = _byte(mode, name="mode")
+        return int(DSX_CUSTOM_MODE_VALUE_TO_TRIGGER_MODE.get(raw_mode, raw_mode))
     key = str(mode).replace(" ", "")
     try:
         return int(DSX_CUSTOM_MODE_TO_TRIGGER_MODE[key])
@@ -432,6 +469,7 @@ PRESET_FACTORIES = {
     # DSX custom hybrid modes — RacingDSX sends these with 7 raw force bytes.
     # The `custom` factory already handles the mode name → TriggerMode mapping
     # via DSX_CUSTOM_MODE_TO_TRIGGER_MODE and passes the 7 forces through.
+    "CustomTriggerValue": custom,
     "VibrateResistance": custom,
     "VibrateResistanceA": custom,
     "VibrateResistanceB": custom,
@@ -458,7 +496,6 @@ def build_from_name(
     o formato aninhado é usado — ajuste fino de frequency exige formato
     dict (`{"frequency": N, "strengths": [...]}`) ou posicional.
     """
-    from typing import Any, cast
     factory = cast("Any", PRESET_FACTORIES.get(name))
     if factory is None:
         raise ValueError(f"preset desconhecido: {name}")

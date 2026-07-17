@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from hefesto_dualsense4unix.core.trigger_effects import TriggerMode
 from hefesto_dualsense4unix.daemon.state_store import StateStore
 from hefesto_dualsense4unix.daemon.udp_server import (
     DsxProtocol,
@@ -13,7 +14,6 @@ from hefesto_dualsense4unix.daemon.udp_server import (
     UdpHandler,
     UdpServer,
 )
-from hefesto_dualsense4unix.core.trigger_effects import TriggerMode
 from hefesto_dualsense4unix.testing import FakeController
 
 # ---------------------------------------------------------------------------
@@ -94,6 +94,26 @@ def test_trigger_update_aplica_trigger():
     assert triggers[0].payload[0] == "right"
 
 
+def test_trigger_update_resistance_preserves_racingdsx_raw_stiffness():
+    """Live RacingDSX fallback packets carry raw 0-255 stiffness in Resistance."""
+    handler, fc, _ = _mk_handler()
+    payload = {
+        "version": 1,
+        "instructions": [
+            {
+                "type": "TriggerUpdate",
+                "parameters": ["right", "Resistance", 0, 175],
+            }
+        ],
+    }
+    handler.handle_datagram(_datagram(payload), ("127.0.0.1", 12345))
+    triggers = [c for c in fc.commands if c.kind == "set_trigger"]
+    assert len(triggers) == 1
+    _, effect = triggers[0].payload
+    assert effect.mode == TriggerMode.RIGID_AB
+    assert effect.forces == (0, 175, 0, 0, 0, 0, 0)
+
+
 def test_trigger_update_custom_mode_accepts_raw_mode_and_forces():
     handler, fc, _ = _mk_handler()
     payload = {
@@ -118,6 +138,29 @@ def test_trigger_update_custom_mode_accepts_dsx_hybrid_aliases():
             {
                 "type": "TriggerUpdate",
                 "parameters": ["left", "Custom", "VibrateResistance", 23, 198, 5, 0, 0, 0, 0],
+            }
+        ],
+    }
+    handler.handle_datagram(_datagram(payload), ("127.0.0.1", 12345))
+    triggers = [c for c in fc.commands if c.kind == "set_trigger"]
+    assert len(triggers) == 1
+    _, effect = triggers[0].payload
+    assert effect.mode == TriggerMode.PULSE
+    assert effect.forces == (23, 198, 5, 0, 0, 0, 0)
+
+
+def test_trigger_update_custom_mode_maps_numeric_dsx_vibrate_resistance():
+    """RacingDSX serializes CustomTriggerValueMode.VibrateResistance as enum value 9.
+
+    DSX interprets that as its hybrid pulse-family mode, not raw DualSense HID mode 9.
+    """
+    handler, fc, _ = _mk_handler()
+    payload = {
+        "version": 1,
+        "instructions": [
+            {
+                "type": "TriggerUpdate",
+                "parameters": ["right", "Custom", 9, 23, 198, 5, 0, 0, 0, 0],
             }
         ],
     }
