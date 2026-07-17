@@ -7,9 +7,11 @@ sem lógica de negócio — facilita troca do backend no futuro (ADR-001).
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
-from pydualsense import pydualsense
+from pydualsense import pydualsense as _pydualsense
+from pydualsense.enums import ConnectionType
 
 from hefesto_dualsense4unix.core.controller import (
     ControllerState,
@@ -24,6 +26,23 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+class pydualsense(_pydualsense):  # noqa: N801 - mantém API/patch points existentes
+    """pydualsense com pacing apenas no transporte Bluetooth.
+
+    O loop upstream escreve um output report para cada input report sem intervalo.
+    Em Linux/Bluetooth isso pode encher o socket HIDP (EAGAIN) e derrubar os
+    devices de input. Dez milissegundos é o workaround confirmado no upstream
+    flok/pydualsense#66; USB permanece sem atraso.
+    """
+
+    _BT_WRITE_INTERVAL_SECONDS = 0.01
+
+    def writeReport(self, report: list[int]) -> None:  # noqa: N802 - API upstream
+        super().writeReport(report)
+        if self.conType == ConnectionType.BT:
+            time.sleep(self._BT_WRITE_INTERVAL_SECONDS)
 
 
 class PyDualSenseController(IController):

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from pydualsense.enums import ConnectionType
+
 from hefesto_dualsense4unix.core.backend_pydualsense import PyDualSenseController
+from hefesto_dualsense4unix.core.backend_pydualsense import pydualsense as hefesto_pydualsense
 from hefesto_dualsense4unix.core.evdev_reader import EvdevReader
 
 
@@ -32,6 +35,38 @@ class _FakePydualsense:
 
     def close(self) -> None:
         self.connected = False
+
+
+class TestBluetoothOutputPacing:
+    def test_bluetooth_write_waits_before_next_report(self) -> None:
+        """BT HIDP precisa de pacing para não saturar o socket e derrubar o controle."""
+        ds = hefesto_pydualsense.__new__(hefesto_pydualsense)
+        ds.conType = ConnectionType.BT
+        report = [0x31] + [0] * 77
+
+        with (
+            patch("pydualsense.pydualsense.pydualsense.writeReport") as raw_write,
+            patch("time.sleep") as sleep,
+        ):
+            ds.writeReport(report)
+
+        raw_write.assert_called_once_with(report)
+        sleep.assert_called_once_with(0.01)
+
+    def test_usb_write_is_not_rate_limited(self) -> None:
+        """O hotfix Bluetooth não deve reduzir a taxa do caminho USB estável."""
+        ds = hefesto_pydualsense.__new__(hefesto_pydualsense)
+        ds.conType = ConnectionType.USB
+        report = [0x02] + [0] * 63
+
+        with (
+            patch("pydualsense.pydualsense.pydualsense.writeReport") as raw_write,
+            patch("time.sleep") as sleep,
+        ):
+            ds.writeReport(report)
+
+        raw_write.assert_called_once_with(report)
+        sleep.assert_not_called()
 
 
 class TestConnectResiliente:
